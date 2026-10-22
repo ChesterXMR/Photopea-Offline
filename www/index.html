@@ -1,0 +1,57 @@
+﻿<!DOCTYPE html>
+<html translate="no">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=5.0, initial-scale=1.0" />
+		<meta name="theme-color" content="#474747">
+		<meta http-equiv="x-dns-prefetch-control" content="off">
+		<title>Photopea</title>
+		<link rel="icon" sizes="512x512" href="promo/icon512.png">
+		<style>
+			body, button, input, textarea, select {  font-family: "Open Sans", "Segoe UI",  sans-serif;  }
+			body, input, select, button {  font-size: 13px;  }
+			body {  margin:0;  background:#111418;  }
+		</style>
+	</head>
+
+	<body class="theme0">
+		<script>
+			// Offline lock (navigation): the server's Content-Security-Policy blocks every request to other hosts,
+			// but it can't stop opening pages there, so refuse pop-ups and link clicks that leave this server.
+			(function() {
+				function isLocal(u) {
+					if (u == null || u === "") return true;
+					u = String(u);
+					if (/^(data|blob|about|javascript):/i.test(u)) return true;
+					try { return new URL(u, location.href).origin === location.origin; } catch (e) { return false; }
+				}
+				var open = window.open;
+				window.open = function(u) {
+					if (!isLocal(u)) { console.warn("Blocked (offline):", u); return null; }
+					return open.apply(window, arguments);
+				};
+				document.addEventListener("click", function(e) {
+					var a = e.target && e.target.closest && e.target.closest("a[href]");
+					if (a && !isLocal(a.getAttribute("href"))) { e.preventDefault(); e.stopPropagation(); console.warn("Blocked (offline):", a.href); }
+				}, true);
+			})();
+			// Load the editor: stylesheet, then the engine scripts in order. sysfonts/list.js comes from the app: it
+			// replaces Photopea's font list (in the DBS file) with the fonts installed on this computer.
+			var fls = [
+				"style/all10.css",
+				"code/ext/ext1791885294.js",
+				"code/dbs/DBS1781343324.js",
+				"sysfonts/list.js",
+				"code/pp/pp1792573386.js"
+			];
+			for(var i=0; i<fls.length; i++) {
+				var url = fls[i], isJS = url.endsWith(".js");
+				var el = document.createElement(isJS ? "script" : "link");
+				el.setAttribute(isJS ? "src" : "href", url);
+				if(!isJS) el.setAttribute("rel","stylesheet");
+				else el.async=false;
+				(isJS ? document.body : document.head).appendChild(el);
+			}
+		</script>
+	</body>
+</html>

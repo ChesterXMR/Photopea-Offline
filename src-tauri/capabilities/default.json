@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "No app commands: the window only shows the local Photopea page",
+  "windows": ["main"],
+  "permissions": []
+}

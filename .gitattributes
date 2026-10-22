@@ -1,0 +1,2 @@
+# keep shell scripts runnable on Linux/macOS
+*.sh text eol=lf

@@ -1,0 +1,12 @@
+{
+  "name": "photopea-offline",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-contained offline Photopea (personal use)",
+  "scripts": {
+    "test": "node scripts/test-app.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.55.1"
+  }
+}

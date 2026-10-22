@@ -1,0 +1,6 @@
+# build output
+/src-tauri/target/
+/src-tauri/gen/
+
+# Node packages (restore with: npm install)
+/node_modules/

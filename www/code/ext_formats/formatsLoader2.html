@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>JXL test</title>
+</head>
+<body onload="go()">
+
+<script type="module">
+	//import init, { decode_jxl_to_rgba8, decode_jxl_to_rgba16, get_jxl_info } from "./jxl_wasm.js";
+	
+	//window._JXL = {init:init, decode_jxl_to_rgba8:decode_jxl_to_rgba8, decode_jxl_to_rgba16:decode_jxl_to_rgba16, get_jxl_info:get_jxl_info};
+	import init, { decode_jxl } from "./jxl_wasm.js";
+	window._JXL = {init:init, decode_jxl:decode_jxl};
+</script>
+
+<script type="text/javascript">
+window.addEventListener("message", message => processMessage(message.data));
+function go()
+{
+  window.parent.postMessage({"subject" : "rdy"});
+}
+function processMessage(msg)
+{
+  //TODO check origin of message
+  if(msg["subject"] == "open")
+  {
+    openFile(msg["body"]);
+  }
+  else if(msg["subject"] == "save")
+  {
+    saveFile(msg["body"],msg["prms"]);
+  }
+}
+
+async function openFile(blob)
+{
+  var image = await blob["arrayBuffer"]();
+  //check what file we got
+  var decoder = null, hdr = "";
+  var hdr8 = new Uint8Array(image.slice(0,64));
+  for (var i = 0; i <  Math.min(64, hdr8.byteLength); i++) hdr += String.fromCharCode(hdr8[i]);  
+  if (hdr.length >= 12 && hdr.substr(0,3) == "\0\0\0" && hdr.charCodeAt(3) < 64 && hdr.charCodeAt(3) % 4 == 0 && hdr.substr(4,4) == "ftyp")
+  {
+    var isheic = false, heiclist = ["heic","heim","heis","heix","hevc","hevm","hevs"];
+    for (var i = 0; i < hdr.charCodeAt(3) / 4; i++)
+    {
+      if ((i == 2 || i > 3) && heiclist.indexOf(hdr.substr(4*i,4)) >= 0)
+      { 
+        isheic = true;
+      }
+    }
+    if (isheic)
+    {      
+      var libheif2;
+      var loadHeicImage = async function()
+      {
+        var bAB = await blob.arrayBuffer();
+        var bU8 = new Uint8Array(bAB);
+        var decoder = new libheif2.HeifDecoder();
+        var data = decoder.decode(bU8);
+        var result = [];
+        for(var i = 0; i<data.length; ++i)
+        {
+          var img = data[0];
+          var width = img.get_width();
+          var height = img.get_height();
+          var image = await new Promise((resolve, reject) => {
+            img.display({ data: new Uint8ClampedArray(width*height*4), width, height }, (displayData) => {
+              if (!displayData) {
+                return reject(new Error('HEIF processing error'));
+              }
+              resolve(displayData);
+            });
+          });
+          var imgd = new ImageData(image.data, width, height)
+          result.push(imgd);
+        }
+        //var t1 = Date.now();
+        //console.log("Time taken ",t1-t0," ms.")
+        if(result.length>1)
+        {
+          //heic contained more than one image
+          window.parent.postMessage({"subject" : "imgm", "body" : result});
+        }
+        else
+        {
+          //one image in heic
+          window.parent.postMessage({"subject" : "img", "body" : result[0]});
+        }        
+      }
+
+      var loadLibheifWasm = async function() {
+          fetch('libheif.wasm')
+            .then((res) => res.arrayBuffer())
+            .then((wasmBinary) => {
+                libheif2 = libheif({ wasmBinary: wasmBinary });
+                loadHeicImage();
+         })         
+      }
+
+      if (typeof libheif2 == "undefined")
+      {
+        //var t0 = Date.now();
+        loadScript("libheif.js", loadLibheifWasm);
+      }      
+      else loadHeicImage();
+    }
+    else
+    {
+      console.log("Invalid image.");
+    }
+  } 
+  else if (image.byteLength > 0)
+  {
+	//*
+	var wasm = await window._JXL.init(); // Needs to be done once
+	
+	var img = new Uint8Array(image);
+	var time = Date.now();
+	//var info = window._JXL.get_jxl_info(img);   
+	//var ob = info.bit_depth==8 ? window._JXL.decode_jxl_to_rgba8(img) : window._JXL.decode_jxl_to_rgba16(img);
+	var buf = window._JXL.decode_jxl(img);  //console.log(buf, buf.width);
+	console.log(Date.now()-time);
+	var raw = wasm.memory.buffer.slice(buf.ptr(), buf.ptr() + buf.byte_len());
+	var pixels = buf.bit_depth > 8 ? new Uint16Array(raw) : new Uint8Array(raw);
+	window.parent.postMessage({"subject" : "img", "body" : {width:buf.width, height:buf.height, data:pixels}});
+	//*/
+	/*
+    var loadJxlImage = function()
+    {
+      var decoder = jxl_dec;
+      if (decoder != null) decoder().then(async module => {
+        try {
+			var time = Date.now();
+          var imageData = module.decode(image);
+			console.log(Date.now()-time);
+          window.parent.postMessage({"subject" : "img", "body" : imageData});
+        } catch(e) {
+          console.log("Error decoding JXL image ", e.message);        
+        }
+      })
+      .catch((e) => {
+          console.log("jxl_dec error: ", e.message);
+        });
+    }
+    if (typeof jxl_dec == "undefined") loadScript("jxl_dec.js", loadJxlImage);
+    else loadJxlImage();
+	//*/
+  }
+  else
+  {
+    console.log("Invalid image.");
+  }
+}
+
+async function saveFile(image,prms)
+{
+  var encoder = null;
+  var options = null;
+
+  var encodeImage = function(){
+    if(prms["fmt"] == "jxl") encoder = jxl_enc;
+    else if(prms["fmt"] == "avif") encoder = avif_enc;    
+    if (encoder != null) encoder().then(async module => {
+      try {
+          var result = module.encode(image.data, image.width, image.height, options);
+          window.parent.postMessage({"subject" : "file", "body" : result, "fmt" : prms["fmt"]});
+      } catch(e) {
+          console.log("Error saving file.",e.message);
+      }
+    })
+    .catch((e) => {
+        console.log("Save error: ", e.message);
+    });
+    else
+    {
+      console.log("Encoder loading failed.");
+    }
+  }
+  //parse parameters and set up encoder
+  if(prms["fmt"] == "jxl")
+  {
+    options = { effort: 10-prms["speed"], quality: prms["quality"], progressive: prms["progressive"] == 1 ? true : false,
+      epf: -1, lossyPalette: false, decodingSpeedTier: 0, photonNoiseIso: 0, lossyModular: false };
+    if(prms["lossless"] != null)
+    {
+      if(prms["lossless"] == 1)
+      {
+        options["quality"] = 100;
+      }
+    }
+    if (typeof jxl_enc == "undefined") loadScript("jxl_enc.js", encodeImage);   
+	else encodeImage();
+  }
+  else if(prms["fmt"] == "avif")
+  {
+    options = { cqLevel: Math.round((100-prms["quality"])*63/100), cqAlphaLevel: -1, denoiseLevel: 0, tileColsLog2: 0, tileRowsLog2: 0,
+      speed: prms["speed"], subsample: prms["lossless"] == 1 ? true : false || prms["nochroma"] == 1 ? 3 : 1,  
+      chromaDeltaQ: false, sharpness: 0, tune: 0 };
+    //TODO: check that subsample is correct
+    if (typeof avif_enc == "undefined") loadScript("avif_enc.js", encodeImage);   
+	else encodeImage();
+  }
+  if(options == null)
+  {
+    console.log("Invalid format, must be jxl or avif.")
+    return;
+  }  
+}
+
+function loadScript(src, fun)
+{
+  var script = document.createElement('script');
+  script.setAttribute('src', src);
+  script.setAttribute('async', '');
+  script.onload = function() { fun(); };
+  script.onerror = function() { console.log("Error: File '"+script.src+"' not found."); }
+  document.head.appendChild(script);
+}
+</script>
+</body></html>
